@@ -1,10 +1,16 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Oxide.Core.Plugins;
 
 namespace Oxide.Core.Libraries
@@ -58,7 +64,7 @@ namespace Oxide.Core.Libraries
             /// <summary>
             /// Gets the web request method
             /// </summary>
-            public string Method { get; set; }
+            public string Method { get; set; } = "GET";
 
             /// <summary>
             /// Gets the destination URL
@@ -68,7 +74,7 @@ namespace Oxide.Core.Libraries
             /// <summary>
             /// Gets or sets the request body
             /// </summary>
-            public string Body { get; set; }
+            public string? Body { get; set; }
 
             /// <summary>
             /// Gets the response code
@@ -78,27 +84,26 @@ namespace Oxide.Core.Libraries
             /// <summary>
             /// Gets the response text
             /// </summary>
-            public string ResponseText { get; protected set; }
+            public string ResponseText { get; protected set; } = string.Empty;
 
             /// <summary>
             /// Gets the plugin to which this web request belongs, if any
             /// </summary>
-            public Plugin Owner { get; protected set; }
+            public Plugin? Owner { get; protected set; }
 
             /// <summary>
             /// Gets the web request headers
             /// </summary>
-            public Dictionary<string, string> RequestHeaders { get; set; }
+            public Dictionary<string, string>? RequestHeaders { get; set; }
 
             /// <summary>
             /// Gets the decompression type for web requests
             /// </summary>
             public DecompressionMethods DecompressionMethod { get; set; } = DecompressionMethods.None;
 
-            private HttpWebRequest request;
-            private WaitHandle waitHandle;
-            private RegisteredWaitHandle registeredWaitHandle;
-            private Event.Callback<Plugin, PluginManager> removedFromManager;
+            private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
+            private Event.Callback<Plugin, PluginManager>? removedFromManager;
+            private bool ownerRemoved;
 
             /// <summary>
             /// Initializes a new instance of the WebRequest class
@@ -106,7 +111,7 @@ namespace Oxide.Core.Libraries
             /// <param name="url"></param>
             /// <param name="callback"></param>
             /// <param name="owner"></param>
-            public WebRequest(string url, Action<int, string> callback, Plugin owner)
+            public WebRequest(string url, Action<int, string> callback, Plugin? owner)
             {
                 Url = url;
                 Callback = callback;
@@ -115,195 +120,86 @@ namespace Oxide.Core.Libraries
             }
 
             /// <summary>
-            /// Used by the worker thread to start the request
             /// </summary>
-            public void Start()
+            public void Start() => _ = Run();
+
+            private async Task Run()
             {
+                Interlocked.Increment(ref pending);
                 try
                 {
-                    // Create the request
-                    request = (HttpWebRequest)System.Net.WebRequest.Create(Url);
-                    request.Method = Method;
-                    request.Credentials = CredentialCache.DefaultCredentials;
-                    request.Proxy = null; // Make sure no proxy is set
-                    request.KeepAlive = false;
-                    request.Timeout = (int)Math.Round((Timeout.Equals(0f) ? WebRequests.Timeout : Timeout) * 1000f);
+                    float timeout = Timeout.Equals(0f) ? WebRequests.Timeout : Timeout;
+                    cancellation.CancelAfter(TimeSpan.FromSeconds(timeout));
 
-                    // Backward compatibility
-                    if (AllowDecompression && DecompressionMethod == DecompressionMethods.None)
-                    {
-                        request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-                    }
-                    else
-                    {
-                        request.AutomaticDecompression = DecompressionMethod;
-                    }
-
-                    request.ServicePoint.MaxIdleTime = request.Timeout;
-                    request.ServicePoint.Expect100Continue = ServicePointManager.Expect100Continue;
-                    request.ServicePoint.ConnectionLimit = ServicePointManager.DefaultConnectionLimit;
-                    request.UserAgent = $"Oxide Mod (v{OxideMod.Version}; https://umod.org)";
-
-                    // Set webrequest to use assigned IP address
-                    if (!request.RequestUri.IsLoopback && IPAddress.TryParse(Interface.Oxide.Config.Options.WebRequestIP, out IPAddress address))
-                    {
-                        request.ServicePoint.BindIPEndPointDelegate = (servicePoint, remoteEndPoint, retryCount) =>
-                        {
-                            return new IPEndPoint(address, 0);
-                        };
-                    }
-
-                    // Optional request body for POST requests
-                    byte[] data = new byte[0];
+                    using HttpRequestMessage request = new HttpRequestMessage(new HttpMethod(Method), Url);
                     if (Body != null)
                     {
-                        data = Encoding.UTF8.GetBytes(Body);
-                        request.ContentLength = data.Length;
-                        request.ContentType = "application/x-www-form-urlencoded";
+                        request.Content = new StringContent(Body, Encoding.UTF8);
+                        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
                     }
 
                     if (RequestHeaders != null)
                     {
-                        request.SetRawHeaders(RequestHeaders);
-                    }
-
-                    // Perform DNS lookup and connect (blocking)
-                    if (data.Length > 0)
-                    {
-                        request.BeginGetRequestStream(result =>
+                        foreach (KeyValuePair<string, string> header in RequestHeaders)
                         {
-                            if (request == null)
+                            if (request.Content != null && header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
                             {
-                                return;
+                                request.Content.Headers.Remove(header.Key);
+                                request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
                             }
+                            else
+                            {
+                                request.Headers.Remove(header.Key);
+                                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                            }
+                        }
+                    }
 
-                            try
-                            {
-                                // Write request body
-                                using (Stream stream = request.EndGetRequestStream(result))
-                                {
-                                    stream.Write(data, 0, data.Length);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                ResponseText = FormatWebException(ex, ResponseText ?? string.Empty);
-                                request?.Abort();
-                                OnComplete();
-                                return;
-                            }
-                            WaitForResponse();
-                        }, null);
-                    }
-                    else
-                    {
-                        WaitForResponse();
-                    }
+#pragma warning disable CS0618
+                    DecompressionMethods decompression = AllowDecompression && DecompressionMethod == DecompressionMethods.None
+                        ? DecompressionMethods.GZip | DecompressionMethods.Deflate
+                        : DecompressionMethod;
+#pragma warning restore CS0618
+
+                    using HttpResponseMessage response = await GetClient(decompression).SendAsync(request, cancellation.Token).ConfigureAwait(false);
+                    ResponseCode = (int)response.StatusCode;
+                    ResponseText = await response.Content.ReadAsStringAsync(cancellation.Token).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException)
+                {
+                    ResponseText = FormatWebException(ex, ResponseText);
                 }
                 catch (Exception ex)
                 {
-                    ResponseText = FormatWebException(ex, ResponseText ?? string.Empty);
+                    ResponseText = FormatWebException(ex, ResponseText);
                     string message = $"Web request produced exception (Url: {Url})";
                     if (Owner)
                     {
-                        message += $" in '{Owner.Name} v{Owner.Version}' plugin";
+                        message += $" in '{Owner!.Name} v{Owner.Version}' plugin";
                     }
 
                     Interface.Oxide.LogException(message, ex);
-                    request?.Abort();
-                    OnComplete();
                 }
-            }
-
-            private void WaitForResponse()
-            {
-                IAsyncResult result = request.BeginGetResponse(res =>
+                finally
                 {
-                    try
-                    {
-                        using (HttpWebResponse response = (HttpWebResponse)request.EndGetResponse(res))
-                        {
-                            using (Stream stream = response.GetResponseStream())
-                            using (StreamReader reader = new StreamReader(stream))
-                            {
-                                ResponseText = reader.ReadToEnd();
-                            }
-
-                            ResponseCode = (int)response.StatusCode;
-                        }
-                    }
-                    catch (WebException ex)
-                    {
-                        ResponseText = FormatWebException(ex, ResponseText ?? string.Empty);
-                        HttpWebResponse response = ex.Response as HttpWebResponse;
-                        if (response != null)
-                        {
-                            try
-                            {
-                                using (Stream stream = response.GetResponseStream())
-                                using (StreamReader reader = new StreamReader(stream))
-                                {
-                                    ResponseText = reader.ReadToEnd();
-                                }
-                            }
-                            catch (Exception)
-                            {
-                                // Ignored
-                            }
-                            ResponseCode = (int)response.StatusCode;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        ResponseText = FormatWebException(ex, ResponseText ?? string.Empty);
-                        string message = $"Web request produced exception (Url: {Url})";
-                        if (Owner)
-                        {
-                            message += $" in '{Owner.Name} v{Owner.Version}' plugin";
-                        }
-
-                        Interface.Oxide.LogException(message, ex);
-                    }
-                    if (request == null)
-                    {
-                        return;
-                    }
-
-                    request.Abort();
-                    OnComplete();
-                }, null);
-                waitHandle = result.AsyncWaitHandle;
-                registeredWaitHandle = ThreadPool.RegisterWaitForSingleObject(waitHandle, OnTimeout, null, request.Timeout, true);
-            }
-
-            private void OnTimeout(object state, bool timedOut)
-            {
-                if (timedOut)
-                {
-                    request?.Abort();
+                    Interlocked.Decrement(ref pending);
                 }
 
-                if (Owner == null)
-                {
-                    return;
-                }
-
-                Event.Remove(ref removedFromManager);
-                Owner = null;
+                OnComplete();
             }
 
             private void OnComplete()
             {
                 Event.Remove(ref removedFromManager);
-                registeredWaitHandle?.Unregister(waitHandle);
                 Interface.Oxide.NextTick(() =>
                 {
-                    if (request == null)
+                    cancellation.Dispose();
+
+                    if (ownerRemoved)
                     {
                         return;
                     }
 
-                    request = null;
                     Owner?.TrackStart();
                     try
                     {
@@ -312,9 +208,9 @@ namespace Oxide.Core.Libraries
                     catch (Exception ex)
                     {
                         string message = "Web request callback raised an exception";
-                        if (Owner && Owner != null)
+                        if (Owner)
                         {
-                            message += $" in '{Owner.Name} v{Owner.Version}' plugin";
+                            message += $" in '{Owner!.Name} v{Owner.Version}' plugin";
                         }
 
                         Interface.Oxide.LogException(message, ex);
@@ -331,24 +227,59 @@ namespace Oxide.Core.Libraries
             /// <param name="manager"></param>
             private void owner_OnRemovedFromManager(Plugin sender, PluginManager manager)
             {
-                if (request == null)
-                {
-                    return;
-                }
-
-                HttpWebRequest outstandingRequest = request;
-                request = null;
-                outstandingRequest.Abort();
+                ownerRemoved = true;
+                Owner = null;
+                cancellation.Cancel();
             }
         }
 
-        private readonly Queue<WebRequest> queue = new Queue<WebRequest>();
-        private readonly object syncroot = new object();
-        private readonly Thread workerthread;
-        private readonly AutoResetEvent workevent = new AutoResetEvent(false);
-        private bool shutdown;
-        private readonly int maxWorkerThreads;
-        private readonly int maxCompletionPortThreads;
+        private static readonly ConcurrentDictionary<DecompressionMethods, HttpClient> clients = new ConcurrentDictionary<DecompressionMethods, HttpClient>();
+        private static int pending;
+
+        private static HttpClient GetClient(DecompressionMethods decompression) => clients.GetOrAdd(decompression, methods =>
+        {
+            SocketsHttpHandler handler = new SocketsHttpHandler
+            {
+                AutomaticDecompression = methods,
+                UseProxy = false,
+                MaxConnectionsPerServer = 200,
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                SslOptions = { RemoteCertificateValidationCallback = (_, _, _, _) => true },
+                ConnectCallback = Connect
+            };
+            HttpClient client = new HttpClient(handler) { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
+            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", $"Oxide Mod (v{OxideMod.Version}; https://umod.org)");
+            client.DefaultRequestHeaders.ExpectContinue = false;
+            return client;
+        });
+
+        private static async ValueTask<Stream> Connect(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+        {
+            IPAddress[] addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, cancellationToken).ConfigureAwait(false);
+            Socket socket;
+            if (IPAddress.TryParse(Interface.Oxide.Config.Options.WebRequestIP, out IPAddress? local) && !local.Equals(IPAddress.Any)
+                && !addresses.Any(IPAddress.IsLoopback))
+            {
+                socket = new Socket(local.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                socket.Bind(new IPEndPoint(local, 0));
+                addresses = addresses.Where(a => a.AddressFamily == local.AddressFamily).ToArray();
+            }
+            else
+            {
+                socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            }
+
+            try
+            {
+                await socket.ConnectAsync(addresses, context.DnsEndPoint.Port, cancellationToken).ConfigureAwait(false);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        }
 
         /// <summary>
         /// Formats given WebException to string
@@ -371,81 +302,6 @@ namespace Oxide.Core.Libraries
             }
 
             return response;
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the WebRequests library
-        /// </summary>
-        public WebRequests()
-        {
-            // Initialize SSL
-            ServicePointManager.Expect100Continue = false;
-            ServicePointManager.ServerCertificateValidationCallback = (_, _, _, _) => true;
-            ServicePointManager.DefaultConnectionLimit = 200;
-
-            ThreadPool.GetMaxThreads(out maxWorkerThreads, out maxCompletionPortThreads);
-            maxCompletionPortThreads = (int)(maxCompletionPortThreads * 0.6);
-            maxWorkerThreads = (int)(maxWorkerThreads * 0.75);
-
-            // Start worker thread
-            workerthread = new Thread(Worker);
-            workerthread.Start();
-        }
-
-        /// <summary>
-        /// Shuts down the worker thread
-        /// </summary>
-        public override void Shutdown()
-        {
-            if (shutdown)
-            {
-                return;
-            }
-
-            shutdown = true;
-            workevent.Set();
-            Thread.Sleep(250);
-            workerthread.Abort();
-        }
-
-        /// <summary>
-        /// The worker thread method
-        /// </summary>
-        private void Worker()
-        {
-            try
-            {
-                while (!shutdown)
-                {
-                    ThreadPool.GetAvailableThreads(out int workerThreads, out int completionPortThreads);
-                    if (workerThreads <= maxWorkerThreads || completionPortThreads <= maxCompletionPortThreads)
-                    {
-                        Thread.Sleep(100);
-                        continue;
-                    }
-                    WebRequest request = null;
-                    lock (syncroot)
-                    {
-                        if (queue.Count > 0)
-                        {
-                            request = queue.Dequeue();
-                        }
-                    }
-
-                    if (request != null)
-                    {
-                        request.Start();
-                    }
-                    else
-                    {
-                        workevent.WaitOne();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Interface.Oxide.LogException("WebRequests worker: ", ex);
-            }
         }
 
         /// <summary>
@@ -510,12 +366,7 @@ namespace Oxide.Core.Libraries
         public void Enqueue(string url, string body, Action<int, string> callback, Plugin owner, RequestMethod method = RequestMethod.GET, Dictionary<string, string> headers = null, float timeout = 0f, DecompressionMethods decompressionMethod = DecompressionMethods.None)
         {
             WebRequest request = new WebRequest(url, callback, owner) { Method = method.ToString(), RequestHeaders = headers, Timeout = timeout, Body = body, DecompressionMethod = decompressionMethod };
-            lock (syncroot)
-            {
-                queue.Enqueue(request);
-            }
-
-            workevent.Set();
+            request.Start();
         }
 
         /// <summary>
@@ -523,10 +374,11 @@ namespace Oxide.Core.Libraries
         /// </summary>
         /// <returns></returns>
         [LibraryFunction("GetQueueLength")]
-        public int GetQueueLength() => queue.Count;
+        public int GetQueueLength() => pending;
     }
 
     // HttpWebRequest extensions to add raw header support
+    [Obsolete("HttpWebRequest is obsolete; WebRequests uses HttpClient")]
     public static class HttpWebRequestExtensions
     {
         /// <summary>
