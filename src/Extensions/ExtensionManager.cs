@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using Oxide.Core.Libraries;
 using Oxide.Core.Logging;
 using Oxide.Core.Plugins;
@@ -142,11 +143,7 @@ namespace Oxide.Core.Extensions
 
                 if (assembly == null)
                 {
-                    // Read the assembly from file
-                    byte[] data = File.ReadAllBytes(filename);
-
-                    // Load the assembly
-                    assembly = Assembly.Load(data);
+                    assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(filename));
                 }
 
                 // Search for a type that derives Extension
