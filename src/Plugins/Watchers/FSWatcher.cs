@@ -2,6 +2,7 @@ using Oxide.Core.Libraries;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Enumeration;
 using System.Text;
 using System.Text.RegularExpressions;
 using Oxide.Pooling;
@@ -110,6 +111,7 @@ namespace Oxide.Core.Plugins.Watchers
             watcher.Changed += watcher_Changed;
             watcher.Created += watcher_Changed;
             watcher.Deleted += watcher_Changed;
+            watcher.Renamed += watcher_Renamed;
             watcher.Error += watcher_Error;
             watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName;
             watcher.IncludeSubdirectories = true;
@@ -128,6 +130,20 @@ namespace Oxide.Core.Plugins.Watchers
         /// </summary>
         /// <param name="name"></param>
         public void RemoveMapping(string name) => watchedPlugins.Remove(name);
+
+        private void watcher_Renamed(object sender, RenamedEventArgs e)
+        {
+            FileSystemWatcher watcher = (FileSystemWatcher)sender;
+            if (FileSystemName.MatchesSimpleExpression(watcher.Filter, Path.GetFileName(e.OldName)))
+            {
+                watcher_Changed(sender, new FileSystemEventArgs(WatcherChangeTypes.Deleted, watcher.Path, e.OldName));
+            }
+
+            if (FileSystemName.MatchesSimpleExpression(watcher.Filter, Path.GetFileName(e.Name)))
+            {
+                watcher_Changed(sender, new FileSystemEventArgs(WatcherChangeTypes.Created, watcher.Path, e.Name));
+            }
+        }
 
         /// <summary>
         /// Called when the watcher has registered a filesystem change
