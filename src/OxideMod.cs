@@ -126,7 +126,7 @@ namespace Oxide.Core
             RootDirectory = Environment.CurrentDirectory;
             if (RootDirectory.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)))
             {
-                RootDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                RootDirectory = AppContext.BaseDirectory;
             }
 
             if (RootDirectory == null)

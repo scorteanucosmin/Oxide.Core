@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Oxide.Core.Libraries;
 using Oxide.Core.Libraries.Covalence;
 using Oxide.Core.Plugins;
@@ -48,10 +49,16 @@ namespace Oxide.Core
             SendPayload(payload);
         }
 
+        private static string Escape(string payload) => string.Join("&", payload.Split('&').Select(pair =>
+        {
+            int separator = pair.IndexOf('=');
+            return separator < 0 ? Uri.EscapeDataString(pair) : pair.Substring(0, separator + 1) + Uri.EscapeDataString(pair.Substring(separator + 1));
+        }));
+
         public static void SendPayload(string payload)
         {
             Dictionary<string, string> headers = new Dictionary<string, string> { { "User-Agent", $"Oxide/{OxideMod.Version} ({Environment.OSVersion}; {Environment.OSVersion.Platform})" } };
-            Webrequests.Enqueue(url, Uri.EscapeUriString(payload), (code, response) => { }, null, RequestMethod.POST, headers);
+            Webrequests.Enqueue(url, Escape(payload), (code, response) => { }, null, RequestMethod.POST, headers);
         }
     }
 }
