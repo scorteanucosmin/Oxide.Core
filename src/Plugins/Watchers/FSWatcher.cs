@@ -1,17 +1,10 @@
-extern alias References;
-
 using Oxide.Core.Libraries;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-#if !NETSTANDARD
-using System.Security.Permissions;
-#endif
 using System.Text.RegularExpressions;
 using Oxide.Pooling;
-using References::Mono.Unix.Native;
-using Syscall = References::Mono.Unix.Native.Syscall;
 
 namespace Oxide.Core.Plugins.Watchers
 {
@@ -81,52 +74,28 @@ namespace Oxide.Core.Plugins.Watchers
         }
 
 
-#if !NETSTANDARD
-        [PermissionSet(SecurityAction.Demand, Name = "FullTrust")]
-#endif
         private void LoadWatcherSymlink(string path)
         {
-            StringBuilder str = StringPool.Take();
-            str.Capacity = 4096;
-            try
+            string? realPath = new FileInfo(path).ResolveLinkTarget(true)?.FullName;
+            if (realPath == null)
             {
-                int count = Syscall.readlink(path, str);
-
-                if (count == -1)
-                {
-                    Errno err = Stdlib.GetLastError();
-
-                    switch (err)
-                    {
-                        case Errno.EINVAL:
-                            return;
-
-                        default:
-                            throw new IOException($"Unable to process symlink | {err}", (int)err);
-                    }
-                }
-
-                string realPath = str.ToString(0, count);
-                string realDirName = Path.GetDirectoryName(realPath);
-                string realFileName = Path.GetFileName(realPath);
-
-                void symlinkTarget_Changed(object sender, FileSystemEventArgs e) => watcher_Changed(sender, e);
-
-                FileSystemWatcher watcher = new FileSystemWatcher(realDirName, realFileName);
-                m_symlinkWatchers[path] = watcher;
-                watcher.Changed += symlinkTarget_Changed;
-                watcher.Created += symlinkTarget_Changed;
-                watcher.Deleted += symlinkTarget_Changed;
-                watcher.Error += watcher_Error;
-                watcher.NotifyFilter = NotifyFilters.LastWrite;
-                watcher.IncludeSubdirectories = false;
-                watcher.EnableRaisingEvents = true;
+                return;
             }
-            finally
-            {
-                str.Length = 0;
-                StringPool.Return(str);
-            }
+
+            string realDirName = Path.GetDirectoryName(realPath);
+            string realFileName = Path.GetFileName(realPath);
+
+            void symlinkTarget_Changed(object sender, FileSystemEventArgs e) => watcher_Changed(sender, e);
+
+            FileSystemWatcher watcher = new FileSystemWatcher(realDirName, realFileName);
+            m_symlinkWatchers[path] = watcher;
+            watcher.Changed += symlinkTarget_Changed;
+            watcher.Created += symlinkTarget_Changed;
+            watcher.Deleted += symlinkTarget_Changed;
+            watcher.Error += watcher_Error;
+            watcher.NotifyFilter = NotifyFilters.LastWrite;
+            watcher.IncludeSubdirectories = false;
+            watcher.EnableRaisingEvents = true;
         }
 
         /// <summary>
@@ -134,9 +103,6 @@ namespace Oxide.Core.Plugins.Watchers
         /// </summary>
         /// <param name="directory"></param>
         /// <param name="filter"></param>
-#if !NETSTANDARD
-        [PermissionSet(SecurityAction.Demand, Name = "FullTrust")]
-#endif
         private void LoadWatcher(string directory, string filter)
         {
             // Create the watcher
