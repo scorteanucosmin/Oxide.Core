@@ -14,7 +14,10 @@ namespace Oxide.Core.Configuration
     /// </summary>
     public class DynamicConfigFile : ConfigFile, IEnumerable<KeyValuePair<string, object>>
     {
-        public JsonSerializerSettings Settings { get; set; } = new JsonSerializerSettings();
+        public JsonSerializerSettings Settings { get; set; } = new JsonSerializerSettings
+        {
+            ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+        };
         private Dictionary<string, object> _keyvalues;
         private readonly JsonSerializerSettings _settings;
         private readonly string _chroot;

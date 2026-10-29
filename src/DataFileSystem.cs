@@ -30,7 +30,10 @@ namespace Oxide.Core
             Directory = directory;
             _datafiles = new Dictionary<string, DynamicConfigFile>();
             KeyValuesConverter converter = new KeyValuesConverter();
-            JsonSerializerSettings settings = new JsonSerializerSettings();
+            JsonSerializerSettings settings = new JsonSerializerSettings
+            {
+                ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+            };
             settings.Converters.Add(converter);
         }
 
