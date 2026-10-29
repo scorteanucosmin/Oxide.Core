@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OxideRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..'))</OxideRoot>
+    <RustServerDir Condition="'$(RustServerDir)' == ''">$([MSBuild]::NormalizeDirectory('$(OxideRoot)', 'RustServer', 'Build', 'Server'))</RustServerDir>
+    <RustManagedDir>$([MSBuild]::NormalizeDirectory('$(RustServerDir)', 'Managed'))</RustManagedDir>
+  </PropertyGroup>
+</Project>

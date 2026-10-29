@@ -1,4 +1,3 @@
-extern alias References;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,7 +7,7 @@ using System.Runtime.CompilerServices;
 using Oxide.Core.Extensions;
 using Oxide.Core.Libraries;
 using Oxide.Core.Plugins;
-using References::Newtonsoft.Json;
+using Newtonsoft.Json;
 
 namespace Oxide.Core
 {

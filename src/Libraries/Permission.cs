@@ -1,11 +1,10 @@
-extern alias References;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
 using Oxide.Core.Plugins;
-using References::ProtoBuf;
+using ProtoBuf;
 
 namespace Oxide.Core.Libraries
 {

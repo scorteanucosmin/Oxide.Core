@@ -1,8 +1,7 @@
-extern alias References;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using References::ProtoBuf;
+using ProtoBuf;
 
 namespace Oxide.Core
 {

@@ -1,8 +1,7 @@
-extern alias References;
 using System;
 using System.Collections.Generic;
 using Oxide.Core.RemoteConsole;
-using References::Cysharp.Text;
+using Cysharp.Text;
 
 namespace Oxide.Core.Logging
 {

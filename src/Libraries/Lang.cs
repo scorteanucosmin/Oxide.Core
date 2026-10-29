@@ -1,10 +1,9 @@
-extern alias References;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Oxide.Core.Plugins;
-using References::Newtonsoft.Json;
-using References::ProtoBuf;
+using Newtonsoft.Json;
+using ProtoBuf;
 
 namespace Oxide.Core.Libraries
 {

@@ -1,4 +1,3 @@
-extern alias References;
 using System.Collections.Generic;
 
 namespace Oxide.Core.Logging

@@ -1,7 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Project>
-  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
-  <Import Project="..\netfx.props" />
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Version>3.0.8</Version>
     <AssemblyName>Oxide.Core</AssemblyName>
@@ -12,19 +9,14 @@
     <PackageIconUrl>icon.png</PackageIconUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
-    <TargetFrameworks>net48;netstandard2.0;netstandard2.1</TargetFrameworks>
-    <LangVersion>Latest</LangVersion>
-    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <NoWarn>NU1701</NoWarn>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Lib.Harmony" Version="2.3.1.1" />
-    <PackageReference Include="Oxide.Common" Version="3.2.1" />
-    <PackageReference Include="Oxide.References" Version="2.0.3807-develop">
-      <PrivateAssets>contentfiles;analyzers;build</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="System.Memory" Version="4.6.3" />
+    <ProjectReference Include="$(OxideRoot)Oxide.Common\src\Oxide.Common.csproj" />
+    <PackageReference Include="protobuf-net" Version="3.2.56" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(RustManagedDir)Newtonsoft.Json.dll" Private="false" />
+    <Reference Include="ZString" HintPath="$(RustManagedDir)ZString.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(RustServerDir)RustDedicated_Data\Managed\0Harmony.dll" Private="false" />
     <None Include="..\resources\icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
   <Target Name="AddGitMetadaAssemblyAttributes" BeforeTargets="CoreGenerateAssemblyInfo">
@@ -36,14 +28,6 @@
         <_Parameter1>GitBranch</_Parameter1>
         <_Parameter2>$(GitBranch)</_Parameter2>
       </AssemblyAttribute>
-    </ItemGroup>
-  </Target>
-  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
-  <Target Name="ChangeAliasesOfStrongNameAssemblies" BeforeTargets="FindReferenceAssembliesForReferences;ResolveReferences">
-    <ItemGroup>
-      <ReferencePath Condition="'%(FileName)' == 'Oxide.References'">
-        <Aliases>References</Aliases>
-      </ReferencePath>
     </ItemGroup>
   </Target>
 </Project>

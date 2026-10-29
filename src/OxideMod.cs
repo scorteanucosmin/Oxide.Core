@@ -1,4 +1,3 @@
-extern alias References;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -16,8 +15,8 @@ using Oxide.Core.Logging;
 using Oxide.Core.Plugins;
 using Oxide.Core.Plugins.Watchers;
 using Oxide.Core.ServerConsole;
-using References::Cysharp.Text;
-using References::Newtonsoft.Json;
+using Cysharp.Text;
+using Newtonsoft.Json;
 using Timer = Oxide.Core.Libraries.Timer;
 
 namespace Oxide.Core

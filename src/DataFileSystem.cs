@@ -1,10 +1,9 @@
-extern alias References;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Oxide.Core.Configuration;
-using References::Newtonsoft.Json;
+using Newtonsoft.Json;
 
 namespace Oxide.Core
 {
