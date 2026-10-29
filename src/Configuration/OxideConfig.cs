@@ -59,6 +59,9 @@ namespace Oxide.Core.Configuration
             /// </summary>
             [JsonProperty(PropertyName = "Ignored Publicizer References")]
             public List<string> IgnoredPublicizerReferences { get; set; } = new List<string>();
+
+            [JsonProperty(PropertyName = "Unload replaced plugin assemblies")]
+            public bool? UnloadAssemblies { get; set; } = true;
         }
 
         [JsonObject]
@@ -252,6 +255,12 @@ namespace Oxide.Core.Configuration
             if (Compiler.IgnoredPublicizerReferences == null)
             {
                 Compiler.IgnoredPublicizerReferences = new List<string>();
+                changed = true;
+            }
+
+            if (Compiler.UnloadAssemblies == null)
+            {
+                Compiler.UnloadAssemblies = true;
                 changed = true;
             }
 
