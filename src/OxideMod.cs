@@ -136,7 +136,13 @@ namespace Oxide.Core
 
             InstanceDirectory = Path.Combine(RootDirectory, "oxide");
             Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
-            JsonConvert.DefaultSettings = () => new JsonSerializerSettings { Culture = CultureInfo.InvariantCulture };
+            Func<JsonSerializerSettings> gameSettings = JsonConvert.DefaultSettings;
+            JsonConvert.DefaultSettings = () =>
+            {
+                JsonSerializerSettings settings = gameSettings?.Invoke() ?? new JsonSerializerSettings();
+                settings.Culture = CultureInfo.InvariantCulture;
+                return settings;
+            };
             CommandLine = new CommandLine(Environment.GetCommandLineArgs());
 
             if (CommandLine.HasVariable("oxide.directory"))
